@@ -1,6 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-const mongoose = require('mongoose');
+const mysql = require('mysql2/promise');
 const config = require('./config');
 const userController = require('./controllers/user-controller');
 const swaggerUi = require('swagger-ui-express');
@@ -11,14 +11,22 @@ const app = express();
 // Swagger setup
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 
-mongoose
-  .connect(config.connectionUrlDatabase, {
-    useCreateIndex: true,
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  })
-  .then(() => console.log('Database connected:', config.connectionUrlDatabase))
-  .catch(error => console.error('Database connection error:', error));
+// MySQL connection
+let dbConnection;
+
+(async () => {
+  try {
+    dbConnection = await mysql.createConnection({
+      host: '127.0.0.1', // Altere para o host do seu MySQL
+      user: 'root', // Altere para o usuário do seu MySQL
+      password: 'root', // Altere para a senha do seu MySQL
+      database: 'car_sales', // Altere para o nome do banco de dados
+    });
+    console.log('Conexão com o banco MySQL estabelecida com sucesso!');
+  } catch (error) {
+    console.error('Erro ao conectar ao MySQL:', error.message);
+  }
+})();
 
 app.use(cors(config.corsOptions));
 app.use(express.json({ limit: '200kb' }));
@@ -32,19 +40,26 @@ app.use((error, req, res, next) => {
   }
 });
 
-require('./routes/user-routes')(app);
-require('./routes/login-routes')(app);
-require('./routes/logout-routes')(app);
-require('./routes/ping-routes')(app);
-require('./routes/brand-routes')(app);
-require('./routes/vehicle-routes')(app);
-require('./routes/customer-routes')(app);
-require('./routes/sale-routes')(app);
+// Injetando conexão MySQL nas rotas (se necessário)
+app.use((req, res, next) => {
+  req.db = dbConnection;
+  next();
+});
+
+// Rotas
+require('./routes/user-routes')(app, dbConnection);
+require('./routes/login-routes')(app, dbConnection);
+require('./routes/logout-routes')(app, dbConnection);
+require('./routes/ping-routes')(app, dbConnection);
+require('./routes/brand-routes')(app, dbConnection);
+require('./routes/vehicle-routes')(app, dbConnection);
+require('./routes/customer-routes')(app, dbConnection);
+require('./routes/sale-routes')(app, dbConnection);
 
 app.listen(config.apiPort, () =>
-  console.log(`Express server is listening on port ${config.apiPort}...`)
+  console.log(`Servidor Express escutando na porta ${config.apiPort}...`)
 );
 
-userController.createAdmin();
+userController.createAdmin(dbConnection);
 
 module.exports = app;
